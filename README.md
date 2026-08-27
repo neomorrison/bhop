@@ -75,7 +75,7 @@ the last stage you are looking down at the first.
 Those numbers are measured, not guessed. In a hop chain you take off from wherever you just
 landed, so the binding constraint is the **centre-to-centre pitch**, not the visible gap: if
 your hop covers less than the pitch you creep backwards a little every jump and eventually
-come up short, however wide the hole was. `test/map.test.mjs` computes that for all 116 pads
+come up short, however wide the hole was. `test/map.test.mjs` computes that for all 117 pads
 and fails the build if the curve spikes, if a rise exceeds what a jump can reach, or if a
 landing window gets narrower than the player hull.
 
