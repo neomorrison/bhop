@@ -143,36 +143,44 @@ function postTick() {
 
 /* ============================== loop ============================== */
 
+/**
+ * Advance the simulation by `dt` seconds of wall clock, in whole 128Hz ticks.
+ * Split out of the render loop so the exact input -> movement -> trigger path
+ * can be driven headlessly (window.BHOP.simulate) instead of only by rAF.
+ */
+export function simulate(dt) {
+  acc += dt;
+  let steps = Math.floor(acc / TICK);
+  if (steps > MOVE.maxSubSteps) { steps = MOVE.maxSubSteps; acc = steps * TICK; }
+
+  if (steps > 0) {
+    const applyLook = consumeLook(view, steps);
+    for (let i = 0; i < steps; i++) {
+      prevYaw = view.yaw;
+      applyLook();
+      view.turnRate = (view.yaw - prevYaw) / TICK;
+      beginTick();
+      const cmd = buildCommand(view, i);
+      view.sideInput = cmd.side;
+      playerMove(view.body, cmd, TICK);
+      postTick();
+      acc -= TICK;
+    }
+    clearLook();
+  } else if (mouse.locked) {
+    // frame rate above the sim rate: keep aiming instant, the ticks catch up
+    const applyLook = consumeLook(view, 1); applyLook(); clearLook();
+  }
+  endFrame();
+  view.keys = keyState();
+  return steps;
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.25, (now - last) / 1000); last = now;
 
-  if (booted && !paused) {
-    acc += dt;
-    let steps = Math.floor(acc / TICK);
-    if (steps > MOVE.maxSubSteps) { steps = MOVE.maxSubSteps; acc = steps * TICK; }
-
-    if (steps > 0) {
-      const applyLook = consumeLook(view, steps);
-      for (let i = 0; i < steps; i++) {
-        prevYaw = view.yaw;
-        applyLook();
-        view.turnRate = (view.yaw - prevYaw) / TICK;
-        beginTick();
-        const cmd = buildCommand(view, i);
-        view.sideInput = cmd.side;
-        playerMove(view.body, cmd, TICK);
-        postTick();
-        acc -= TICK;
-      }
-      clearLook();
-    } else if (mouse.locked) {
-      // frame rate above the sim rate: keep aiming instant, the ticks catch up
-      const applyLook = consumeLook(view, 1); applyLook(); clearLook();
-    }
-    endFrame();
-    view.keys = keyState();
-  }
+  if (booted && !paused) simulate(dt);
 
   updateCamera(booted ? acc / TICK : 0, dt);
   updateFx(dt);
@@ -279,6 +287,13 @@ function boot() {
     },
   });
 
+  // A hidden tab gets no animation frames. Pause rather than banking wall clock
+  // we would then have to burn through in one go on the way back.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && booted && !paused) pause(true);
+    else if (!document.hidden) { acc = 0; last = performance.now(); }
+  });
+
   $("#playBtn").addEventListener("click", start);
   $("#playBtn").disabled = false;
   $("#playBtn").textContent = "PLAY";
@@ -294,6 +309,7 @@ requestAnimationFrame(frame);
 window.BHOP = {
   get view() { return view; }, get RUN() { return RUN; }, get RECORDS() { return RECORDS; },
   MOVE, SETTINGS, MAP, scene, camera, renderer, worldStats,
+  simulate, get paused() { return paused; }, get booted() { return booted; },
   tp(x, y, z) { spawnAt({ x, y, z }); return view.body.pos; },
   toCheckpoint(i) { const c = MAP.checkpoints[i]; if (c) spawnAt({ x: c.x, y: c.y + 2, z: c.z, yaw: c.yaw }); },
   /** Drive the player headlessly: a perfect strafe for N ticks (used to sanity-check the course). */
